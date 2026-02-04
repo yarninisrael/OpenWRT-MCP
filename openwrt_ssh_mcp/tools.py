@@ -531,6 +531,594 @@ class OpenWRTTools:
                 "error": str(e),
             }
 
+    # ========== File Operations Tools ==========
+
+    @staticmethod
+    async def file_list(path: str = "/", options: str = None) -> dict[str, Any]:
+        """
+        List directory contents.
+
+        Args:
+            path: Directory path (default: /)
+            options: Optional ls flags like '-la', '-lh', '-R'
+
+        Returns:
+            dict: Directory listing
+        """
+        # Validate path - must be absolute
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        # Sanitize path
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        # Build command
+        if options and re.match(r'^-[lahtRrS1]+$', options):
+            command = f"ls {options} {path}"
+        else:
+            command = f"ls -la {path}"
+
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            # Parse ls output into structured data
+            entries = []
+            lines = result["output"].strip().split("\n")
+
+            for line in lines:
+                if not line or line.startswith("total"):
+                    continue
+
+                parts = line.split(None, 8)
+                if len(parts) >= 9:
+                    entries.append({
+                        "permissions": parts[0],
+                        "links": parts[1],
+                        "owner": parts[2],
+                        "group": parts[3],
+                        "size": parts[4],
+                        "date": f"{parts[5]} {parts[6]} {parts[7]}",
+                        "name": parts[8],
+                        "is_dir": parts[0].startswith("d"),
+                        "is_link": parts[0].startswith("l"),
+                    })
+                elif len(parts) >= 1:
+                    entries.append({"name": parts[-1]})
+
+            return {
+                "success": True,
+                "path": path,
+                "entries": entries,
+                "count": len(entries),
+                "raw_output": result["output"],
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def file_read(path: str, lines: int = None, from_end: bool = False) -> dict[str, Any]:
+        """
+        Read file contents.
+
+        Args:
+            path: File path (must be absolute)
+            lines: Optional - limit to N lines
+            from_end: If True with lines, read last N lines (tail), otherwise first N (head)
+
+        Returns:
+            dict: File contents
+        """
+        # Validate path
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        # Build command
+        if lines and isinstance(lines, int) and lines > 0:
+            if from_end:
+                command = f"tail -n {lines} {path}"
+            else:
+                command = f"head -n {lines} {path}"
+        else:
+            command = f"cat {path}"
+
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            return {
+                "success": True,
+                "path": path,
+                "content": result["output"],
+                "line_count": len(result["output"].split("\n")),
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def file_search(
+        pattern: str,
+        path: str = "/etc",
+        search_type: str = "content",
+        recursive: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Search for files or content.
+
+        Args:
+            pattern: Search pattern (filename pattern or grep pattern)
+            path: Directory to search in (default: /etc)
+            search_type: 'content' (grep) or 'filename' (find)
+            recursive: Search recursively (default: True)
+
+        Returns:
+            dict: Search results
+        """
+        # Validate path
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        # Sanitize pattern - basic check
+        if any(c in pattern for c in [";", "|", "&", "$", "`", "(", ")"]):
+            return {
+                "success": False,
+                "error": "Invalid characters in pattern",
+            }
+
+        if search_type == "content":
+            # Use grep
+            flags = "-r" if recursive else ""
+            command = f"grep {flags} '{pattern}' {path}"
+        elif search_type == "filename":
+            # Use find
+            command = f"find {path} -name '{pattern}'"
+        else:
+            return {
+                "success": False,
+                "error": "search_type must be 'content' or 'filename'",
+            }
+
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            matches = [line for line in result["output"].strip().split("\n") if line]
+            return {
+                "success": True,
+                "pattern": pattern,
+                "path": path,
+                "search_type": search_type,
+                "matches": matches,
+                "count": len(matches),
+            }
+        else:
+            # grep returns exit code 1 if no matches - not an error
+            if "exit_code" in result and result.get("exit_code") == 1:
+                return {
+                    "success": True,
+                    "pattern": pattern,
+                    "path": path,
+                    "search_type": search_type,
+                    "matches": [],
+                    "count": 0,
+                }
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def file_stat(path: str) -> dict[str, Any]:
+        """
+        Get detailed file/directory information.
+
+        Args:
+            path: File or directory path
+
+        Returns:
+            dict: File statistics
+        """
+        # Validate path
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        command = f"stat {path}"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            # Parse stat output
+            info = {"raw": result["output"]}
+            for line in result["output"].split("\n"):
+                if "Size:" in line:
+                    size_match = re.search(r'Size:\s*(\d+)', line)
+                    if size_match:
+                        info["size_bytes"] = int(size_match.group(1))
+                    type_match = re.search(r'Type:\s*(\w+)', line)
+                    if type_match:
+                        info["type"] = type_match.group(1)
+                elif "Access:" in line and "Uid:" in line:
+                    perm_match = re.search(r'Access:\s*\((\d+)/([^)]+)\)', line)
+                    if perm_match:
+                        info["permissions_octal"] = perm_match.group(1)
+                        info["permissions"] = perm_match.group(2)
+                    uid_match = re.search(r'Uid:\s*\(\s*(\d+)/\s*(\w+)\)', line)
+                    if uid_match:
+                        info["uid"] = int(uid_match.group(1))
+                        info["owner"] = uid_match.group(2)
+                    gid_match = re.search(r'Gid:\s*\(\s*(\d+)/\s*(\w+)\)', line)
+                    if gid_match:
+                        info["gid"] = int(gid_match.group(1))
+                        info["group"] = gid_match.group(2)
+                elif line.strip().startswith("Access:") and "Uid" not in line:
+                    info["access_time"] = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Modify:"):
+                    info["modify_time"] = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Change:"):
+                    info["change_time"] = line.split(":", 1)[1].strip()
+
+            return {
+                "success": True,
+                "path": path,
+                "info": info,
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def file_disk_usage(path: str = "/") -> dict[str, Any]:
+        """
+        Get disk usage for a path.
+
+        Args:
+            path: Directory path (default: /)
+
+        Returns:
+            dict: Disk usage information
+        """
+        # Validate path
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        command = f"du -sh {path}"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            parts = result["output"].strip().split()
+            return {
+                "success": True,
+                "path": path,
+                "size": parts[0] if parts else "unknown",
+                "raw_output": result["output"],
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def file_mkdir(path: str) -> dict[str, Any]:
+        """
+        Create a directory.
+
+        Args:
+            path: Directory path to create
+
+        Returns:
+            dict: Operation result
+        """
+        # Validate path
+        if not path.startswith("/"):
+            return {
+                "success": False,
+                "error": "Path must be absolute (start with /)",
+            }
+
+        if ".." in path:
+            return {
+                "success": False,
+                "error": "Path traversal not allowed",
+            }
+
+        # Block sensitive paths
+        blocked_paths = ["/etc", "/bin", "/sbin", "/usr", "/lib", "/root", "/sys", "/proc", "/dev"]
+        for blocked in blocked_paths:
+            if path == blocked or path.rstrip("/") == blocked:
+                return {
+                    "success": False,
+                    "error": f"Cannot create directory at protected path: {blocked}",
+                }
+
+        command = f"mkdir -p {path}"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            return {
+                "success": True,
+                "message": f"Directory created: {path}",
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    # ========== WiFi Management Tools ==========
+
+    @staticmethod
+    async def wifi_control(action: str = None) -> dict[str, Any]:
+        """
+        Control WiFi interfaces (restart, up, down, reload).
+
+        Args:
+            action: Optional action - 'up', 'down', 'reload', or None to restart
+
+        Returns:
+            dict: Operation result
+        """
+        if action and action not in ["up", "down", "reload"]:
+            return {
+                "success": False,
+                "error": f"Invalid action '{action}'. Use 'up', 'down', 'reload', or omit for restart.",
+            }
+
+        command = f"wifi {action}" if action else "wifi"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            return {
+                "success": True,
+                "message": f"WiFi {'restarted' if not action else action} successfully",
+                "output": result["output"],
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+                "output": result["output"],
+            }
+
+    @staticmethod
+    async def wifi_get_interfaces() -> dict[str, Any]:
+        """
+        Get detailed information about all wireless interfaces using iwinfo.
+
+        Returns:
+            dict: Wireless interface information
+        """
+        command = "iwinfo"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            # Parse iwinfo output into structured data
+            interfaces = []
+            current_iface = None
+
+            for line in result["output"].split("\n"):
+                if line and not line.startswith(" ") and not line.startswith("\t"):
+                    # New interface line
+                    if current_iface:
+                        interfaces.append(current_iface)
+                    parts = line.split()
+                    current_iface = {
+                        "name": parts[0] if parts else "",
+                        "essid": "",
+                        "raw": line,
+                        "details": {}
+                    }
+                    # Extract ESSID if present
+                    if 'ESSID:' in line:
+                        essid_match = re.search(r'ESSID:\s*"([^"]*)"', line)
+                        if essid_match:
+                            current_iface["essid"] = essid_match.group(1)
+                elif current_iface and line.strip():
+                    # Detail line - parse key-value pairs
+                    line = line.strip()
+                    if ":" in line:
+                        key, _, value = line.partition(":")
+                        current_iface["details"][key.strip().lower().replace(" ", "_")] = value.strip()
+
+            if current_iface:
+                interfaces.append(current_iface)
+
+            return {
+                "success": True,
+                "interfaces": interfaces,
+                "count": len(interfaces),
+                "raw_output": result["output"],
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def wifi_scan(interface: str) -> dict[str, Any]:
+        """
+        Scan for nearby WiFi networks.
+
+        Args:
+            interface: Wireless interface name (e.g., 'wlan0', 'phy0-ap0')
+
+        Returns:
+            dict: List of detected networks
+        """
+        # Validate interface name
+        if not re.match(r'^[\w-]+$', interface):
+            return {
+                "success": False,
+                "error": "Invalid interface name",
+            }
+
+        command = f"iwinfo {interface} scan"
+        result = await OpenWRTTools.execute_command(command)
+
+        if result["success"]:
+            # Parse scan results
+            networks = []
+            current_network = None
+
+            for line in result["output"].split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+
+                # New network entry starts with Cell or ESSID
+                if line.startswith("Cell") or (line.startswith("ESSID:") and current_network is None):
+                    if current_network:
+                        networks.append(current_network)
+                    current_network = {"raw_lines": [line]}
+                elif current_network:
+                    current_network["raw_lines"].append(line)
+
+                    # Extract common fields
+                    if "ESSID:" in line:
+                        match = re.search(r'ESSID:\s*"([^"]*)"', line)
+                        if match:
+                            current_network["essid"] = match.group(1)
+                    elif "Signal:" in line:
+                        match = re.search(r'Signal:\s*(-?\d+)', line)
+                        if match:
+                            current_network["signal_dbm"] = int(match.group(1))
+                    elif "Channel:" in line:
+                        match = re.search(r'Channel:\s*(\d+)', line)
+                        if match:
+                            current_network["channel"] = int(match.group(1))
+                    elif "Encryption:" in line:
+                        current_network["encryption"] = line.split(":", 1)[1].strip()
+
+            if current_network:
+                networks.append(current_network)
+
+            return {
+                "success": True,
+                "interface": interface,
+                "networks": networks,
+                "count": len(networks),
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+    @staticmethod
+    async def wifi_get_clients(interface: str = None) -> dict[str, Any]:
+        """
+        Get connected WiFi clients with signal strength and stats.
+
+        Args:
+            interface: Optional - specific interface, or None for all interfaces
+
+        Returns:
+            dict: Connected clients information
+        """
+        await ssh_client.ensure_connected()
+
+        clients = []
+
+        if interface:
+            # Validate interface name
+            if not re.match(r'^[\w-]+$', interface):
+                return {
+                    "success": False,
+                    "error": "Invalid interface name",
+                }
+            interfaces = [interface]
+        else:
+            # Get all wireless interfaces first
+            result = await ssh_client.execute("iwinfo")
+            if not result["success"]:
+                return {
+                    "success": False,
+                    "error": f"Failed to list interfaces: {result['stderr']}",
+                }
+            # Extract interface names
+            interfaces = re.findall(r'^(\w+)\s+ESSID:', result["stdout"], re.MULTILINE)
+
+        # Get associated clients for each interface
+        for iface in interfaces:
+            result = await ssh_client.execute(f"iwinfo {iface} assoclist")
+            if result["success"] and result["stdout"].strip():
+                # Parse assoclist output
+                for line in result["stdout"].split("\n"):
+                    if line.strip():
+                        client = {"interface": iface, "raw": line}
+                        # Extract MAC address
+                        mac_match = re.search(r'([0-9A-Fa-f:]{17})', line)
+                        if mac_match:
+                            client["mac"] = mac_match.group(1)
+                        # Extract signal
+                        signal_match = re.search(r'(-?\d+)\s*dBm', line)
+                        if signal_match:
+                            client["signal_dbm"] = int(signal_match.group(1))
+                        # Extract TX/RX rates
+                        tx_match = re.search(r'TX:\s*([\d.]+)\s*MBit', line)
+                        if tx_match:
+                            client["tx_rate_mbps"] = float(tx_match.group(1))
+                        rx_match = re.search(r'RX:\s*([\d.]+)\s*MBit', line)
+                        if rx_match:
+                            client["rx_rate_mbps"] = float(rx_match.group(1))
+
+                        if "mac" in client:  # Only add if we found a MAC
+                            clients.append(client)
+
+        return {
+            "success": True,
+            "clients": clients,
+            "count": len(clients),
+        }
+
     # ========== Package Management (opkg) Tools ==========
 
     @staticmethod

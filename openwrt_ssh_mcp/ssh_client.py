@@ -166,10 +166,35 @@ class SSHClient:
                 "execution_time": execution_time,
             }
 
+        except (asyncssh.ConnectionLost, asyncssh.DisconnectError, OSError) as e:
+            # Connection was lost - mark as disconnected for reconnection
+            execution_time = (datetime.now() - start_time).total_seconds()
+            error = f"SSH connection lost: {str(e)}"
+            logger.error(error)
+            self.is_connected = False
+            self.connection = None
+            audit_logger.log_command(
+                command=command,
+                success=False,
+                error=error,
+                execution_time=execution_time,
+            )
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": error,
+                "exit_code": -1,
+                "execution_time": execution_time,
+            }
+
         except Exception as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             error = f"Command execution error: {str(e)}"
             logger.error(error)
+            # Check if this looks like a connection error
+            if "closed" in str(e).lower() or "connection" in str(e).lower():
+                self.is_connected = False
+                self.connection = None
             audit_logger.log_command(
                 command=command,
                 success=False,
@@ -186,8 +211,20 @@ class SSHClient:
 
     async def ensure_connected(self):
         """Ensure SSH connection is active, reconnect if necessary."""
-        if not self.is_connected:
+        if not self.is_connected or not self.connection:
             logger.info("Connection not active, attempting to reconnect...")
+            await self.connect()
+            return
+
+        # Verify connection is actually alive by checking if transport is open
+        try:
+            if self.connection.is_closed():
+                logger.warning("SSH connection was closed, reconnecting...")
+                self.is_connected = False
+                await self.connect()
+        except Exception as e:
+            logger.warning(f"Connection check failed: {e}, reconnecting...")
+            self.is_connected = False
             await self.connect()
 
     async def test_connection(self) -> dict:

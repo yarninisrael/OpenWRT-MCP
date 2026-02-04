@@ -130,6 +130,202 @@ async def list_tools() -> list[Tool]:
                 "required": ["config_name"],
             },
         ),
+        # File Operations Tools
+        Tool(
+            name="openwrt_file_list",
+            description=(
+                "List directory contents with details (permissions, owner, size, date). "
+                "Similar to 'ls -la'. Use to explore the router filesystem."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path (default: /)",
+                        "default": "/",
+                    },
+                    "options": {
+                        "type": "string",
+                        "description": "Optional ls flags: '-la', '-lh', '-R' for recursive",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="openwrt_file_read",
+            description=(
+                "Read file contents. Can read entire file or limit to first/last N lines. "
+                "Use for viewing config files, logs, etc."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path (must be absolute, e.g., /etc/config/network)",
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Optional - limit to N lines",
+                    },
+                    "from_end": {
+                        "type": "boolean",
+                        "description": "If true with lines, read last N lines (like tail)",
+                        "default": False,
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
+        Tool(
+            name="openwrt_file_search",
+            description=(
+                "Search for files by name or search within file contents. "
+                "Uses 'find' for filename search, 'grep' for content search."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Search pattern (filename glob or grep regex)",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory to search in (default: /etc)",
+                        "default": "/etc",
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "description": "'content' to search file contents (grep), 'filename' to search names (find)",
+                        "enum": ["content", "filename"],
+                        "default": "content",
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Search recursively (default: true)",
+                        "default": True,
+                    },
+                },
+                "required": ["pattern"],
+            },
+        ),
+        Tool(
+            name="openwrt_file_stat",
+            description=(
+                "Get detailed file information including permissions, owner, group, "
+                "size, and timestamps (access, modify, change times)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File or directory path",
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
+        Tool(
+            name="openwrt_file_disk_usage",
+            description="Get disk usage (size) for a directory.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path (default: /)",
+                        "default": "/",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="openwrt_file_mkdir",
+            description=(
+                "Create a directory on the router. Creates parent directories if needed. "
+                "Protected system paths are blocked."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path to create",
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
+        # WiFi Management Tools
+        Tool(
+            name="openwrt_wifi_control",
+            description=(
+                "Control WiFi interfaces - restart all wireless, bring up, bring down, or reload configuration. "
+                "Use this to apply wireless configuration changes or troubleshoot WiFi issues."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "Action to perform: 'up', 'down', 'reload', or omit to restart all wireless",
+                        "enum": ["up", "down", "reload"],
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="openwrt_wifi_get_interfaces",
+            description=(
+                "Get detailed information about all wireless interfaces including ESSID, channel, "
+                "mode, signal strength, and encryption. Uses iwinfo for comprehensive data."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="openwrt_wifi_scan",
+            description=(
+                "Scan for nearby WiFi networks on a specific interface. "
+                "Returns list of networks with ESSID, signal strength, channel, and encryption."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "interface": {
+                        "type": "string",
+                        "description": "Wireless interface name (e.g., 'wlan0', 'phy0-ap0', 'radio0')",
+                    },
+                },
+                "required": ["interface"],
+            },
+        ),
+        Tool(
+            name="openwrt_wifi_get_clients",
+            description=(
+                "Get list of connected WiFi clients with MAC address, signal strength, "
+                "and TX/RX rates. Can query specific interface or all interfaces."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "interface": {
+                        "type": "string",
+                        "description": "Optional - specific interface, or omit for all interfaces",
+                    },
+                },
+                "required": [],
+            },
+        ),
         # OpenThread Border Router (OTBR) Tools
         Tool(
             name="openwrt_thread_get_state",
@@ -324,6 +520,63 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             if not config_name:
                 raise ValueError("Missing required argument: config_name")
             result = await OpenWRTTools.read_config(config_name)
+
+        # File Operations tools
+        elif name == "openwrt_file_list":
+            path = arguments.get("path", "/")
+            options = arguments.get("options")
+            result = await OpenWRTTools.file_list(path, options)
+
+        elif name == "openwrt_file_read":
+            path = arguments.get("path")
+            if not path:
+                raise ValueError("Missing required argument: path")
+            lines = arguments.get("lines")
+            from_end = arguments.get("from_end", False)
+            result = await OpenWRTTools.file_read(path, lines, from_end)
+
+        elif name == "openwrt_file_search":
+            pattern = arguments.get("pattern")
+            if not pattern:
+                raise ValueError("Missing required argument: pattern")
+            path = arguments.get("path", "/etc")
+            search_type = arguments.get("search_type", "content")
+            recursive = arguments.get("recursive", True)
+            result = await OpenWRTTools.file_search(pattern, path, search_type, recursive)
+
+        elif name == "openwrt_file_stat":
+            path = arguments.get("path")
+            if not path:
+                raise ValueError("Missing required argument: path")
+            result = await OpenWRTTools.file_stat(path)
+
+        elif name == "openwrt_file_disk_usage":
+            path = arguments.get("path", "/")
+            result = await OpenWRTTools.file_disk_usage(path)
+
+        elif name == "openwrt_file_mkdir":
+            path = arguments.get("path")
+            if not path:
+                raise ValueError("Missing required argument: path")
+            result = await OpenWRTTools.file_mkdir(path)
+
+        # WiFi Management tools
+        elif name == "openwrt_wifi_control":
+            action = arguments.get("action")
+            result = await OpenWRTTools.wifi_control(action)
+
+        elif name == "openwrt_wifi_get_interfaces":
+            result = await OpenWRTTools.wifi_get_interfaces()
+
+        elif name == "openwrt_wifi_scan":
+            interface = arguments.get("interface")
+            if not interface:
+                raise ValueError("Missing required argument: interface")
+            result = await OpenWRTTools.wifi_scan(interface)
+
+        elif name == "openwrt_wifi_get_clients":
+            interface = arguments.get("interface")
+            result = await OpenWRTTools.wifi_get_clients(interface)
 
         # OpenThread Border Router tools
         elif name == "openwrt_thread_get_state":

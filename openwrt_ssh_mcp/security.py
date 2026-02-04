@@ -13,14 +13,109 @@ class SecurityValidator:
     """Validates commands before execution to prevent malicious actions."""
 
     ALLOWED_PATTERNS = [
+        # UCI configuration
         r"^uci show",
         r"^uci get",
+        r"^uci set",
+        r"^uci commit",
+
+        # UBUS calls
+        r"^ubus call system board$",
+        r"^ubus call system info$",
+        r"^ubus call network\.interface\.\w+ (status|restart|up|down)$",
+        r"^ubus call network\.wireless status$",
+        r"^ubus list",
+
+        # System information
+        r"^cat /proc/(uptime|meminfo|cpuinfo|loadavg)$",
+        r"^cat /etc/openwrt_release$",
+        r"^cat /tmp/dhcp\.leases$",
+        r"^cat /var/dhcp\.leases$",
+        r"^uptime$",
+        r"^free",
+        r"^df",
+        r"^ps",
+        r"^top -n 1",
+
+        # Network commands
         r"^ip addr",
         r"^ip route",
+        r"^ip link",
+        r"^ip neigh",
+        r"^ifconfig",
+        r"^ping -c \d+",
+        r"^traceroute",
+        r"^nslookup",
+
+        # Firewall
+        r"^iptables -L",
+        r"^iptables -t nat -L",
+        r"^ip6tables -L",
+
+        # Logging
         r"^logread",
         r"^dmesg",
+
+        # Package management (opkg)
+        r"^opkg update$",
         r"^opkg list",
-        r"^opkg update",
+        r"^opkg list-installed$",
+        r"^opkg list-upgradable$",
+        r"^opkg info [a-zA-Z0-9._-]+$",
+        r"^opkg install [a-zA-Z0-9._-]+$",
+        r"^opkg remove [a-zA-Z0-9._-]+$",
+        r"^opkg upgrade [a-zA-Z0-9._-]+$",
+
+        # OpenThread Border Router (OTBR) commands
+        r"^(/usr/sbin/)?ot-ctl state$",
+        r"^(/usr/sbin/)?ot-ctl channel",
+        r"^(/usr/sbin/)?ot-ctl panid",
+        r"^(/usr/sbin/)?ot-ctl networkkey",
+        r"^(/usr/sbin/)?ot-ctl networkname",
+        r"^(/usr/sbin/)?ot-ctl extpanid",
+        r"^(/usr/sbin/)?ot-ctl ifconfig",
+        r"^(/usr/sbin/)?ot-ctl thread (start|stop)$",
+        r"^(/usr/sbin/)?ot-ctl dataset",
+        r"^(/usr/sbin/)?ot-ctl prefix",
+        r"^(/usr/sbin/)?ot-ctl neighbor table$",
+        r"^(/usr/sbin/)?ot-ctl router table$",
+        r"^(/usr/sbin/)?ot-ctl child table$",
+        r"^(/usr/sbin/)?ot-ctl ipaddr$",
+        r"^(/usr/sbin/)?ot-ctl rloc16$",
+        r"^(/usr/sbin/)?ot-ctl leaderdata$",
+        r"^(/usr/sbin/)?ot-ctl commissioner",
+
+        # Test/echo commands
+        r"^echo ",
+
+        # File operations - Read
+        r"^ls($|\s+-)",
+        r"^cat\s+/",
+        r"^head\s+(-n\s+\d+\s+)?/",
+        r"^tail\s+(-n\s+\d+\s+|-f\s+)?/",
+        r"^stat\s+/",
+        r"^file\s+/",
+        r"^wc\s+(-[lwc]\s+)?/",
+        r"^du\s+(-[shc]+\s+)?/",
+
+        # File operations - Search
+        r"^grep\s+(-[a-zA-Z]+\s+)*['\"]?[\w.*-]+['\"]?\s+/",
+        r"^find\s+/[\w/-]+\s+-name\s+",
+        r"^find\s+/[\w/-]+\s+-type\s+",
+
+        # File operations - Safe writes
+        r"^mkdir\s+(-p\s+)?/",
+        r"^touch\s+/",
+
+        # WiFi commands
+        r"^wifi$",
+        r"^wifi (up|down|reload|status)$",
+        r"^iwinfo$",
+        r"^iwinfo \w+ (info|scan|assoclist|txpowerlist|freqlist|countrylist)$",
+        r"^iw dev$",
+        r"^iw dev \w+ (info|scan|station dump|get power_save)$",
+        r"^iw phy$",
+        r"^iw list$",
     ]
 
     BLOCKED_PATTERNS = [
