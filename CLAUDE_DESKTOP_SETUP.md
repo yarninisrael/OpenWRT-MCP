@@ -8,9 +8,7 @@ Complete guide for installing and configuring the OpenWRT SSH MCP Server with Cl
 
 1. [Overview](#overview)
 2. [Prerequisites](#prerequisites)
-3. [Installation Methods](#installation-methods)
-   - [Method 1: Docker (Recommended)](#method-1-docker-recommended)
-   - [Method 2: Direct Python](#method-2-direct-python)
+3. [Installation](#installation)
 4. [Router Setup](#router-setup)
 5. [Claude Desktop Configuration](#claude-desktop-configuration)
 6. [Testing Your Setup](#testing-your-setup)
@@ -38,7 +36,7 @@ Claude Desktop (MCP Client)
         ↓
     MCP Protocol (stdio)
         ↓
-Docker Container or Python Process
+    Python MCP Server
         ↓
     SSH Connection
         ↓
@@ -55,8 +53,7 @@ OpenWRT Router (192.168.1.1)
 |-----------|-------------|
 | Operating System | Windows 10/11, macOS 10.15+, or Linux |
 | Claude Desktop | Latest version installed |
-| Docker (Method 1) | Docker Desktop 4.0+ |
-| Python (Method 2) | Python 3.10 or higher |
+| Python | Python 3.10 or higher |
 | Network | Access to your OpenWRT router |
 
 ### Router Requirements
@@ -68,153 +65,21 @@ OpenWRT Router (192.168.1.1)
 
 ---
 
-## Installation Methods
+## Installation
 
-### Method 1: Docker (Recommended)
-
-Docker provides the most secure and isolated installation. This is the recommended method for production use.
-
-#### Step 1: Install Docker Desktop
-
-**Windows:**
-1. Download Docker Desktop from https://www.docker.com/products/docker-desktop
-2. Run the installer and follow the prompts
-3. Restart your computer when prompted
-4. Launch Docker Desktop and wait for it to start
-
-**macOS:**
-```bash
-# Using Homebrew
-brew install --cask docker
-
-# Or download from https://www.docker.com/products/docker-desktop
-```
-
-**Linux:**
-```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install docker.io docker-compose
-sudo systemctl enable docker
-sudo systemctl start docker
-sudo usermod -aG docker $USER
-# Log out and back in for group changes to take effect
-```
-
-#### Step 2: Clone the Repository
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/openwrt_ssh_mcp.git
-cd openwrt_ssh_mcp
-
-# Or download and extract the ZIP file
-```
-
-#### Step 3: Configure Environment Variables
-
-```bash
-# Copy the example configuration
-cp .env.example .env
-```
-
-Edit the `.env` file with your router details:
-
-```bash
-# Router Connection Settings
-OPENWRT_HOST=192.168.1.1          # Your router's IP address
-OPENWRT_PORT=22                    # SSH port (usually 22)
-OPENWRT_USER=root                  # SSH username
-
-# Authentication - Choose ONE method:
-
-# Option A: SSH Key (Recommended - more secure)
-OPENWRT_KEY_FILE=/root/.ssh/openwrt_router
-
-# Option B: Password (less secure, not recommended)
-# OPENWRT_PASSWORD=your_router_password
-
-# SSH Settings
-SSH_TIMEOUT=30
-SSH_KEEPALIVE_INTERVAL=15
-
-# Security Settings (keep these enabled)
-ENABLE_COMMAND_VALIDATION=true
-ENABLE_AUDIT_LOGGING=true
-LOG_FILE=/app/logs/openwrt_mcp.log
-```
-
-#### Step 4: Set Up SSH Key Authentication (Recommended)
-
-Generate and configure SSH keys for secure, passwordless authentication:
-
-**On your computer:**
-
-```bash
-# Generate a new SSH key pair
-ssh-keygen -t ed25519 -f ~/.ssh/openwrt_router -C "OpenWRT MCP Server"
-
-# When prompted for a passphrase, press Enter for no passphrase
-# (required for automated connections)
-```
-
-**Copy the key to your router:**
-
-```bash
-# Copy your public key to the router
-ssh-copy-id -i ~/.ssh/openwrt_router.pub root@192.168.1.1
-
-# Enter your router's root password when prompted
-```
-
-**Verify the connection:**
-
-```bash
-# Test SSH connection with key
-ssh -i ~/.ssh/openwrt_router root@192.168.1.1 "uname -a"
-
-# You should see OpenWRT system information without entering a password
-```
-
-#### Step 5: Build the Docker Image
-
-```bash
-# Build the Docker image
-docker build -t openwrt-ssh-mcp:latest .
-
-# This will take a few minutes and create a ~271MB image
-```
-
-#### Step 6: Test the Docker Container
-
-```bash
-# Run a quick test (press Ctrl+C to exit)
-docker run -i --rm \
-  --network host \
-  --env-file .env \
-  --mount type=bind,src=$HOME/.ssh,dst=/root/.ssh,readonly \
-  openwrt-ssh-mcp:latest
-```
-
-If successful, you'll see the MCP server start without errors.
-
----
-
-### Method 2: Direct Python
-
-For development or if you prefer not to use Docker.
-
-#### Step 1: Install Python
+### Step 1: Install Python
 
 **Windows:**
 1. Download Python 3.10+ from https://www.python.org/downloads/
-2. Run installer and CHECK "Add Python to PATH"
+2. Run installer and **CHECK "Add Python to PATH"**
 3. Complete installation
 
 **macOS:**
 ```bash
 # Using Homebrew
 brew install python@3.11
+
+# Or download from https://www.python.org/downloads/
 ```
 
 **Linux:**
@@ -224,50 +89,103 @@ sudo apt update
 sudo apt install python3.11 python3.11-venv python3-pip
 ```
 
-#### Step 2: Clone and Set Up the Project
+### Step 2: Clone the Repository
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/openwrt_ssh_mcp.git
-cd openwrt_ssh_mcp
+git clone https://github.com/yarninisrael/OpenWRT-MCP.git
+cd OpenWRT-MCP
+```
 
-# Create a virtual environment
+Or download and extract the ZIP file from GitHub.
+
+### Step 3: Create Virtual Environment and Install
+
+**Linux/macOS:**
+```bash
+# Create virtual environment
 python3 -m venv venv
 
-# Activate the virtual environment
-# Linux/macOS:
+# Activate virtual environment
 source venv/bin/activate
-# Windows:
+
+# Install the package
+pip install -e .
+```
+
+**Windows:**
+```powershell
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
 .\venv\Scripts\activate
 
 # Install the package
 pip install -e .
 ```
 
-#### Step 3: Configure Environment
+### Step 4: Set Up SSH Key Authentication (Recommended)
+
+Generate and configure SSH keys for secure, passwordless authentication:
+
+**Generate SSH Key:**
 
 ```bash
-# Copy and edit configuration
-cp .env.example .env
+# Generate a new SSH key pair
+ssh-keygen -t ed25519 -f ~/.ssh/openwrt_router -C "OpenWRT MCP Server"
 
-# Edit .env with your settings (see Method 1, Step 3)
+# When prompted for a passphrase, press Enter for no passphrase
+# (required for automated connections)
 ```
 
-#### Step 4: Set Up SSH Keys
+**Windows users:** The key will be created at `C:\Users\YourUsername\.ssh\openwrt_router`
 
-Follow the SSH key setup instructions from Method 1, Step 4.
-
-#### Step 5: Test the Installation
+**Copy Key to Router:**
 
 ```bash
-# Activate virtual environment if not active
-source venv/bin/activate  # Linux/macOS
-# or
-.\venv\Scripts\activate   # Windows
+# Copy your public key to the router
+ssh-copy-id -i ~/.ssh/openwrt_router.pub root@192.168.1.1
 
-# Run the server (press Ctrl+C to exit)
+# Enter your router's root password when prompted
+```
+
+**Windows users without ssh-copy-id:**
+```powershell
+# Display your public key
+type $env:USERPROFILE\.ssh\openwrt_router.pub
+
+# Then SSH into router and add it manually
+ssh root@192.168.1.1
+# On router, paste key into /etc/dropbear/authorized_keys
+```
+
+**Verify Connection:**
+
+```bash
+# Test SSH connection with key
+ssh -i ~/.ssh/openwrt_router root@192.168.1.1 "uname -a"
+
+# You should see OpenWRT system information without entering a password
+```
+
+### Step 5: Test the Server
+
+```bash
+# Make sure virtual environment is activated
+# Linux/macOS:
+source venv/bin/activate
+# Windows:
+.\venv\Scripts\activate
+
+# Set environment variables and run
+export OPENWRT_HOST=192.168.1.1
+export OPENWRT_USER=root
+export OPENWRT_KEY_FILE=~/.ssh/openwrt_router
 python -m openwrt_ssh_mcp.server
 ```
+
+Press Ctrl+C to stop. If no errors appear, the server is working.
 
 ---
 
@@ -319,64 +237,16 @@ Usually: `C:\Users\YourUsername\AppData\Roaming\Claude\claude_desktop_config.jso
 ~/.config/Claude/claude_desktop_config.json
 ```
 
-### Configuration for Docker (Recommended)
+### Create/Edit Configuration
 
-Create or edit `claude_desktop_config.json`:
+Create or edit the `claude_desktop_config.json` file:
 
-**Windows:**
+**Windows Example:**
 ```json
 {
   "mcpServers": {
     "openwrt-router": {
-      "command": "docker",
-      "args": [
-        "run",
-        "--rm",
-        "-i",
-        "--network", "host",
-        "--env-file", "C:\\Users\\YourUsername\\Projects\\openwrt_ssh_mcp\\.env",
-        "--mount", "type=bind,src=C:\\Users\\YourUsername\\.ssh,dst=/root/.ssh,readonly",
-        "--read-only",
-        "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges:true",
-        "openwrt-ssh-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-**macOS/Linux:**
-```json
-{
-  "mcpServers": {
-    "openwrt-router": {
-      "command": "docker",
-      "args": [
-        "run",
-        "--rm",
-        "-i",
-        "--network", "host",
-        "--env-file", "/Users/yourusername/Projects/openwrt_ssh_mcp/.env",
-        "--mount", "type=bind,src=/Users/yourusername/.ssh,dst=/root/.ssh,readonly",
-        "--read-only",
-        "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges:true",
-        "openwrt-ssh-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-### Configuration for Direct Python
-
-**Windows:**
-```json
-{
-  "mcpServers": {
-    "openwrt-router": {
-      "command": "C:\\Users\\YourUsername\\Projects\\openwrt_ssh_mcp\\venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\YourUsername\\Projects\\OpenWRT-MCP\\venv\\Scripts\\python.exe",
       "args": ["-m", "openwrt_ssh_mcp.server"],
       "env": {
         "OPENWRT_HOST": "192.168.1.1",
@@ -391,12 +261,12 @@ Create or edit `claude_desktop_config.json`:
 }
 ```
 
-**macOS/Linux:**
+**macOS Example:**
 ```json
 {
   "mcpServers": {
     "openwrt-router": {
-      "command": "/Users/yourusername/Projects/openwrt_ssh_mcp/venv/bin/python",
+      "command": "/Users/yourusername/Projects/OpenWRT-MCP/venv/bin/python",
       "args": ["-m", "openwrt_ssh_mcp.server"],
       "env": {
         "OPENWRT_HOST": "192.168.1.1",
@@ -410,6 +280,39 @@ Create or edit `claude_desktop_config.json`:
   }
 }
 ```
+
+**Linux Example:**
+```json
+{
+  "mcpServers": {
+    "openwrt-router": {
+      "command": "/home/yourusername/Projects/OpenWRT-MCP/venv/bin/python",
+      "args": ["-m", "openwrt_ssh_mcp.server"],
+      "env": {
+        "OPENWRT_HOST": "192.168.1.1",
+        "OPENWRT_PORT": "22",
+        "OPENWRT_USER": "root",
+        "OPENWRT_KEY_FILE": "/home/yourusername/.ssh/openwrt_router",
+        "ENABLE_COMMAND_VALIDATION": "true",
+        "ENABLE_AUDIT_LOGGING": "true"
+      }
+    }
+  }
+}
+```
+
+### Important Configuration Notes
+
+1. **Replace paths** with your actual paths:
+   - `YourUsername` → your actual username
+   - Project path → where you cloned the repository
+
+2. **Use the correct Python path**:
+   - Must point to the Python inside your virtual environment
+   - Windows: `...\venv\Scripts\python.exe`
+   - macOS/Linux: `.../venv/bin/python`
+
+3. **SSH key path** must match where you created your key
 
 ### Apply Configuration
 
@@ -452,7 +355,7 @@ List the installed packages on my router.
 
 ## Available Tools
 
-The MCP server provides 19 tools organized into categories:
+The MCP server provides 19+ tools organized into categories:
 
 ### System & Network (8 tools)
 
@@ -583,47 +486,23 @@ Once configured, you can ask Claude natural language questions:
    ssh root@192.168.1.1
    ```
 
-3. Verify firewall isn't blocking SSH:
-   - Ensure port 22 is open on your computer's firewall
+3. Verify firewall isn't blocking SSH
 
 **Error: "Authentication failed"**
 
-1. For SSH key auth:
+1. Check key permissions:
    ```bash
-   # Check key permissions
+   # Linux/macOS
    chmod 600 ~/.ssh/openwrt_router
    chmod 644 ~/.ssh/openwrt_router.pub
+   ```
 
-   # Test key manually
+2. Test key manually:
+   ```bash
    ssh -i ~/.ssh/openwrt_router -v root@192.168.1.1
    ```
 
-2. For password auth:
-   - Verify password is correct in `.env`
-   - Try connecting manually: `ssh root@192.168.1.1`
-
-### Docker Issues
-
-**Error: "Docker not running"**
-
-- Ensure Docker Desktop is running
-- Windows: Check system tray for Docker icon
-- macOS: Check menu bar for Docker icon
-
-**Error: "Image not found"**
-
-```bash
-# Rebuild the image
-docker build -t openwrt-ssh-mcp:latest .
-```
-
-**Error: "Cannot connect to Docker daemon"**
-
-```bash
-# Linux: Ensure you're in the docker group
-sudo usermod -aG docker $USER
-# Then log out and back in
-```
+3. Ensure key was copied to router correctly
 
 ### Claude Desktop Issues
 
@@ -635,27 +514,38 @@ sudo usermod -aG docker $USER
    python -c "import json; json.load(open('claude_desktop_config.json'))"
    ```
 
-2. Check file is in correct location (see Configuration section)
+2. Check file is in correct location
 
-3. Completely quit and restart Claude Desktop
+3. Verify Python path is correct and points to venv
+
+4. **Completely quit and restart Claude Desktop**
 
 **Error: "Tool execution failed"**
 
 1. Test the server manually:
    ```bash
-   # Docker method
-   docker run -i --rm --network host --env-file .env openwrt-ssh-mcp:latest
+   # Activate venv first
+   source venv/bin/activate  # or .\venv\Scripts\activate on Windows
 
-   # Python method
-   python -m openwrt_ssh_mcp.server
+   # Set environment and run
+   OPENWRT_HOST=192.168.1.1 OPENWRT_USER=root OPENWRT_KEY_FILE=~/.ssh/openwrt_router python -m openwrt_ssh_mcp.server
    ```
 
-2. Check the logs:
-   ```bash
-   cat openwrt_mcp.log
-   ```
+2. Look for error messages in the output
 
 ### Common Fixes
+
+**"Module not found" error:**
+```bash
+# Make sure you're using the venv Python
+which python  # Should show .../venv/bin/python
+
+# If not, activate the venv
+source venv/bin/activate
+
+# Reinstall if needed
+pip install -e .
+```
 
 **Permission denied on SSH key (Linux/macOS):**
 ```bash
@@ -667,10 +557,10 @@ chmod 700 ~/.ssh
 - Use double backslashes in JSON: `C:\\Users\\...`
 - Or use forward slashes: `C:/Users/...`
 
-**Environment variable not loaded:**
-- Ensure `.env` file exists in the project directory
-- Check for typos in variable names
-- Verify no extra spaces around `=` signs
+**Python not found:**
+- Ensure you're using the full path to the venv Python
+- Windows: `C:\...\venv\Scripts\python.exe`
+- macOS/Linux: `/.../venv/bin/python`
 
 ---
 
@@ -681,8 +571,7 @@ chmod 700 ~/.ssh
 1. **Use SSH key authentication** instead of passwords
 2. **Keep command validation enabled** (`ENABLE_COMMAND_VALIDATION=true`)
 3. **Enable audit logging** (`ENABLE_AUDIT_LOGGING=true`)
-4. **Use Docker** for additional isolation
-5. **Don't store passwords in plain text** - use SSH keys instead
+4. **Use a dedicated SSH key** just for MCP server access
 
 ### What's Protected
 
@@ -691,45 +580,48 @@ The MCP server includes built-in security:
 - **Command whitelist**: Only approved commands can be executed
 - **Blocked dangerous commands**: `rm -rf`, `mkfs`, `dd`, `shutdown`, `reboot`, `passwd`
 - **Audit logging**: All commands are logged with timestamps
-- **Docker isolation**: Container runs with minimal privileges
-
-### Docker Security Options
-
-The recommended Docker configuration includes:
-
-```bash
---read-only                           # Read-only filesystem
---cap-drop ALL                        # Drop all capabilities
---security-opt no-new-privileges:true # Prevent privilege escalation
---tmpfs /tmp:rw,noexec,nosuid        # Restricted temp directory
-```
 
 ---
 
-## Getting Help
+## Environment Variables Reference
 
-- **GitHub Issues**: Report bugs or request features
-- **Documentation**: See the `Documentation/` folder for additional guides
-- **Logs**: Check `openwrt_mcp.log` for detailed error information
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENWRT_HOST` | Yes | 192.168.1.1 | Router IP address |
+| `OPENWRT_PORT` | No | 22 | SSH port |
+| `OPENWRT_USER` | Yes | root | SSH username |
+| `OPENWRT_KEY_FILE` | Recommended | - | Path to SSH private key |
+| `OPENWRT_PASSWORD` | Alternative | - | SSH password (not recommended) |
+| `SSH_TIMEOUT` | No | 30 | Connection timeout in seconds |
+| `ENABLE_COMMAND_VALIDATION` | No | true | Enable security whitelist |
+| `ENABLE_AUDIT_LOGGING` | No | true | Enable command logging |
+| `LOG_FILE` | No | - | Path to log file |
 
 ---
 
 ## Quick Reference
 
-### Essential Commands
+### Installation Summary
 
 ```bash
-# Build Docker image
-docker build -t openwrt-ssh-mcp:latest .
+# 1. Clone repository
+git clone https://github.com/yarninisrael/OpenWRT-MCP.git
+cd OpenWRT-MCP
 
-# Test Docker container
-docker run -i --rm --network host --env-file .env openwrt-ssh-mcp:latest
+# 2. Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# .\venv\Scripts\activate  # Windows
 
-# Test SSH connection
-ssh -i ~/.ssh/openwrt_router root@192.168.1.1
+# 3. Install package
+pip install -e .
 
-# Check logs
-cat openwrt_mcp.log
+# 4. Set up SSH key
+ssh-keygen -t ed25519 -f ~/.ssh/openwrt_router
+ssh-copy-id -i ~/.ssh/openwrt_router.pub root@192.168.1.1
+
+# 5. Configure Claude Desktop (edit claude_desktop_config.json)
+# 6. Restart Claude Desktop
 ```
 
 ### Configuration File Locations
@@ -740,17 +632,12 @@ cat openwrt_mcp.log
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Linux | `~/.config/Claude/claude_desktop_config.json` |
 
-### Environment Variables Summary
+---
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENWRT_HOST` | Yes | 192.168.1.1 | Router IP address |
-| `OPENWRT_PORT` | No | 22 | SSH port |
-| `OPENWRT_USER` | Yes | root | SSH username |
-| `OPENWRT_KEY_FILE` | Recommended | - | Path to SSH private key |
-| `OPENWRT_PASSWORD` | Alternative | - | SSH password (not recommended) |
-| `ENABLE_COMMAND_VALIDATION` | No | true | Security whitelist |
-| `ENABLE_AUDIT_LOGGING` | No | true | Command logging |
+## Getting Help
+
+- **GitHub Issues**: https://github.com/yarninisrael/OpenWRT-MCP/issues
+- **Documentation**: See other files in the repository for additional guides
 
 ---
 
