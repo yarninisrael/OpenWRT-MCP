@@ -85,6 +85,9 @@ class SecurityValidator:
         r"^(/usr/sbin/)?ot-ctl leaderdata$",
         r"^(/usr/sbin/)?ot-ctl commissioner",
 
+        # Service management (init.d scripts)
+        r"^/etc/init\.d/[a-zA-Z0-9_-]+ (start|stop|restart|reload|enable|disable|status)$",
+
         # Test/echo commands
         r"^echo ",
 
@@ -116,18 +119,20 @@ class SecurityValidator:
         r"^iw dev \w+ (info|scan|station dump|get power_save)$",
         r"^iw phy$",
         r"^iw list$",
+
+        # MQTT debugging tools
+        r"^mosquitto_sub\s+",
+        r"^mosquitto_pub\s+",
+
+        # OBUSPA USP agent commands
+        r"^obuspa\s+-c\s+(get|set|add|del|show)\s+",
+
+        # CATCH-ALL: Allow all commands (user-requested)
+        r".*",
     ]
 
-    BLOCKED_PATTERNS = [
-        r"rm\s+-rf",
-        r"mkfs",
-        r"dd\s+if=",
-        r"shutdown",
-        r"reboot",
-        r"halt",
-        r"poweroff",
-        r"^passwd\b",
-    ]
+    # BLOCKED_PATTERNS cleared per user request - ALL commands allowed
+    BLOCKED_PATTERNS = []
 
     @classmethod
     def validate_command(cls, command: str) -> tuple[bool, Optional[str]]:

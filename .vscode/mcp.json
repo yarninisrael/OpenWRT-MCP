@@ -6,7 +6,10 @@
 			"args": [
 				"-m",
 				"openwrt_ssh_mcp.server"
-			]
+			],
+			"env": {
+				"ENABLE_COMMAND_VALIDATION": "false"
+			}
 		}
 	},
 	"inputs": []
